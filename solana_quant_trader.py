@@ -116,12 +116,13 @@ class SolanaQuantBot:
             print("📂 保有ポジション: なし（厳選シグナル待機中）")
         print("=" * 68)
 
-    def run_single_cycle(self) -> None:
+    def run_single_cycle(self, force_telegram_report: bool = False) -> None:
         """
         全監視銘柄（SOL, JUP, RAY, BONK）の最新データを取得し、
         1. 保有ポジションの決済（利確・損切り・トレーリング・タイムストップ）判定
         2. 新規エントリーの厳選・執行
         を1サイクル実行する。
+        force_telegram_report=True の場合は売買がなくても現在の市場診断レポートをTelegramに送信する。
         """
         snapshots: Dict[str, MarketSnapshot] = {}
         latest_prices: Dict[str, float] = {}
@@ -177,6 +178,7 @@ class SolanaQuantBot:
         # 2. 各銘柄のテクニカル指標とシグナルを評価・一覧表示（SOLの地合いも連動チェック）
         sol_1h_change = snapshots["SOL"].price_change_1h_pct if "SOL" in snapshots else 0.0
         buy_candidates: list[TradeSignal] = []
+        report_lines: list[str] = []
         print("\n📈 【クオンツ指標・シグナル判定結果】")
         for symbol, snap in snapshots.items():
             signal = self.signal_engine.evaluate_snapshot(snap, sol_1h_change_pct=sol_1h_change)
@@ -186,6 +188,9 @@ class SolanaQuantBot:
                 f"  [{symbol:<4}] {status_icon} | 価格: ${ind.current_price:<10.5f} | "
                 f"RSI(14): {ind.rsi_14:5.1f} | 出来高倍率: {ind.volume_ratio:4.2f}x | "
                 f"ATR: {ind.atr_pct:4.2f}% | {signal.reason}"
+            )
+            report_lines.append(
+                f"・<b>{symbol}</b>: ${ind.current_price:.4f} | RSI:{ind.rsi_14:.1f} | Vol:{ind.volume_ratio:.1f}x -> {status_icon}"
             )
             if signal.action == "BUY" and symbol not in self.risk_manager.state.open_positions:
                 buy_candidates.append(signal)
@@ -236,6 +241,19 @@ class SolanaQuantBot:
 
         self.print_status_dashboard(latest_prices)
 
+        if force_telegram_report:
+            state = self.risk_manager.state
+            total_eq = self.risk_manager.get_total_equity_usdc(latest_prices)
+            pnl_pct = ((total_eq - state.initial_usdc) / state.initial_usdc * 100.0) if state.initial_usdc > 0 else 0.0
+            summary_msg = (
+                f"📊 <b>【Solana クオンツ定期診断レポート ({self.mode})】</b>\n"
+                f"💰 総資産: <b>${total_eq:.4f} USDC ({pnl_pct:+.2f}%)</b>\n"
+                f"🏆 成績: {state.total_trades}戦 {state.winning_trades}勝 | 保有中: {len(state.open_positions)}銘柄\n\n"
+                + ("\n".join(report_lines) if report_lines else "※市場データ取得待機中")
+            )
+            send_telegram_alert(summary_msg)
+            print("📲 Telegramに診断レポートを送信しました。")
+
     def run_forever(self) -> None:
         """指定秒数ごとにマーケットを監視し続けるメインループ。"""
         print(
@@ -274,13 +292,18 @@ def main() -> None:
         action="store_true",
         help="現在のポートフォリオ状況・勝率・保有ポジションを表示して終了する",
     )
+    parser.add_argument(
+        "--notify",
+        action="store_true",
+        help="売買がなくても現在のスキャン結果と資産レポートをTelegramにテスト送信する",
+    )
     args = parser.parse_args()
 
     bot = SolanaQuantBot(mode=args.mode.upper())
     if args.status:
         bot.print_status_dashboard()
     elif args.once:
-        bot.run_single_cycle()
+        bot.run_single_cycle(force_telegram_report=args.notify)
     else:
         bot.run_forever()
 

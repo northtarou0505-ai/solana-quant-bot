@@ -15,13 +15,14 @@
       "mint_address": "So11111111111111111111111111111111111111112",
       "strategy_name": "Oversold_Mean_Reversion",
       "entry_price": 72.74,
-      "highest_price": 73.75,
-      "stop_loss_price": 71.53880963433504,
+      "highest_price": 74.2277397815306,
+      "stop_loss_price": 73.4854623837153,
       "take_profit_price": 75.50412,
       "invested_usdc": 6.3189,
       "token_amount": 0.08676108571624966,
       "opened_at": "2026-11-19 01:26:43",
-      "trailing_active": false
+      "opened_at_ts": 1795060271.008825,
+      "trailing_active": true
     }
   },
   "trade_history": [
