@@ -1,0 +1,6 @@
+requests
+google-genai
+solana
+solders
+python-dotenv
+base58

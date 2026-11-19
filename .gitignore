@@ -1,0 +1,14 @@
+# 秘密鍵やAPIキーが含まれる環境変数ファイルは絶対にGitへアップロードしない
+.env
+.env.*
+!.env.template
+
+# Pythonキャッシュ
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# OS生成ファイル
+.DS_Store
