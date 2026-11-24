@@ -1,7 +1,7 @@
 {
   "mode": "PAPER",
   "initial_usdc": 6.8,
-  "available_usdc": 6.4823,
+  "available_usdc": 0.3241,
   "daily_start_equity_usdc": 6.643601375,
   "current_date": "2026-11-24",
   "consecutive_losses": 2,
@@ -9,7 +9,22 @@
   "total_trades": 2,
   "winning_trades": 0,
   "total_net_pnl_usdc": -0.3177,
-  "open_positions": {},
+  "open_positions": {
+    "SOL": {
+      "symbol": "SOL",
+      "mint_address": "So11111111111111111111111111111111111111112",
+      "strategy_name": "Oversold_Mean_Reversion",
+      "entry_price": 69.88,
+      "highest_price": 69.88,
+      "stop_loss_price": 69.04144,
+      "take_profit_price": 72.53544,
+      "invested_usdc": 6.1582,
+      "token_amount": 0.08801520105895821,
+      "opened_at": "2026-11-24 13:25:58",
+      "opened_at_ts": 1795526758.2196348,
+      "trailing_active": false
+    }
+  },
   "trade_history": [
     {
       "symbol": "RAY",
