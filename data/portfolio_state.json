@@ -1,30 +1,15 @@
 {
   "mode": "PAPER",
   "initial_usdc": 6.8,
-  "available_usdc": 0.3326,
+  "available_usdc": 6.4823,
   "daily_start_equity_usdc": 6.643601375,
   "current_date": "2026-11-24",
-  "consecutive_losses": 1,
+  "consecutive_losses": 2,
   "cooldown_until_ts": 0.0,
-  "total_trades": 1,
+  "total_trades": 2,
   "winning_trades": 0,
-  "total_net_pnl_usdc": -0.1485,
-  "open_positions": {
-    "SOL": {
-      "symbol": "SOL",
-      "mint_address": "So11111111111111111111111111111111111111112",
-      "strategy_name": "Oversold_Mean_Reversion",
-      "entry_price": 72.74,
-      "highest_price": 74.2277397815306,
-      "stop_loss_price": 73.4854623837153,
-      "take_profit_price": 75.50412,
-      "invested_usdc": 6.3189,
-      "token_amount": 0.08676108571624966,
-      "opened_at": "2026-11-19 01:26:43",
-      "opened_at_ts": 1795060271.008825,
-      "trailing_active": true
-    }
-  },
+  "total_net_pnl_usdc": -0.3177,
+  "open_positions": {},
   "trade_history": [
     {
       "symbol": "RAY",
@@ -36,6 +21,17 @@
       "net_pnl_pct": -2.3,
       "exit_reason": "🛡️ 損切りストップ発動 (-2.05% / SL=$1.4425)",
       "closed_at": "2026-11-18 20:40:29"
+    },
+    {
+      "symbol": "SOL",
+      "strategy_name": "Oversold_Mean_Reversion",
+      "entry_price": 72.74,
+      "exit_price": 70.97,
+      "invested_usdc": 6.3189,
+      "net_pnl_usdc": -0.1692,
+      "net_pnl_pct": -2.68,
+      "exit_reason": "🔒 トレーリングストップ利確 (-2.43% / TrailSL=$73.4855)",
+      "closed_at": "2026-11-24 03:46:42"
     }
   ]
 }
