@@ -7,17 +7,15 @@ Solana 凄腕クオンツ自動売買ボット（1,000円少額スタート ＆ 
    python3 solana_quant_trader.py --status
 
 2. リアルタイム市場データを取得して1回だけシグナル判定・仮想売買テストを実行:
-   python3 solana_quant_trader.py --once
+   python3 solana_quant_trader.py --once --notify
 
-3. 24時間自動監視ループの起動（デフォルトは安全なPAPER仮想売買モード）:
-   python3 solana_quant_trader.py
-
-4. Phantomサブウォレットを使った本番稼働（十分にPAPERで勝率確認後）:
-   python3 solana_quant_trader.py --mode live
+3. GitHub Actions クラウド長時間連続稼働モード（3.5時間連続で3分おきに監視し、30分おきにTelegramへ定期レポート送信）:
+   python3 solana_quant_trader.py --cloud-loop --duration-minutes 210 --notify-interval-minutes 30
 """
 
 import argparse
 import os
+import subprocess
 import sys
 import time
 from datetime import datetime
@@ -38,7 +36,7 @@ from src.strategy.signal_engine import QuantSignalEngine, TradeSignal
 
 
 def send_telegram_alert(message: str) -> None:
-    """環境変数にTelegram設定がある場合のみ、エントリー・決済通知を送信する。"""
+    """環境変数にTelegram設定がある場合のみ、エントリー・決済・定期レポート通知を送信する。"""
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
     if not bot_token or not chat_id or bot_token == "your_telegram_bot_token_here":
@@ -53,6 +51,56 @@ def send_telegram_alert(message: str) -> None:
         )
     except Exception as exc:
         print(f"【Telegram通知警告】送信失敗: {exc}")
+
+
+def sync_portfolio_state_to_git() -> None:
+    """
+    GitHub Actions上で稼働中、ポジションや資産状態(data/portfolio_state.json)に変更があれば即座にGitへ自動保存する。
+    ※コミットメッセージに [skip ci] を入れるとGitHubの定期タイマー(schedule)まで抑制される仕様があるため、[skip ci] は付けない。
+    """
+    if os.getenv("GITHUB_ACTIONS") != "true":
+        return
+
+    try:
+        subprocess.run(
+            ["git", "config", "user.name", "github-actions[bot]"],
+            cwd=str(PROJECT_ROOT),
+            check=False,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"],
+            cwd=str(PROJECT_ROOT),
+            check=False,
+        )
+        subprocess.run(
+            ["git", "add", "data/portfolio_state.json"],
+            cwd=str(PROJECT_ROOT),
+            check=False,
+        )
+        diff_res = subprocess.run(
+            ["git", "diff", "--staged", "--quiet"],
+            cwd=str(PROJECT_ROOT),
+            check=False,
+        )
+        if diff_res.returncode != 0:
+            subprocess.run(
+                ["git", "commit", "-m", "chore: update portfolio state"],
+                cwd=str(PROJECT_ROOT),
+                check=False,
+            )
+            subprocess.run(
+                ["git", "pull", "--rebase", "origin", "main"],
+                cwd=str(PROJECT_ROOT),
+                check=False,
+            )
+            subprocess.run(
+                ["git", "push", "origin", "main"],
+                cwd=str(PROJECT_ROOT),
+                check=False,
+            )
+            print("💾 クラウド上のポートフォリオ状態をGitHubへ即時保存しました。")
+    except Exception as exc:
+        print(f"【Git自動保存警告】状態保存中に軽微なエラーが発生しました: {exc}")
 
 
 class SolanaQuantBot:
@@ -143,7 +191,6 @@ class SolanaQuantBot:
 
             pos = self.risk_manager.state.open_positions[sym]
             snap = snapshots.get(sym)
-            # GitHub Actions 10分間隔実行対策：エントリー時刻以降の5分足高値を抽出してトレーリングストップに反映
             recent_high = cur_price
             if snap and snap.candles_5m:
                 highs_after_entry = [
@@ -174,6 +221,7 @@ class SolanaQuantBot:
                             f"${closed.net_pnl_usdc:+.4f} USDC ({closed.net_pnl_pct:+.2f}%)"
                         )
                         send_telegram_alert(msg)
+                        sync_portfolio_state_to_git()
 
         # 2. 各銘柄のテクニカル指標とシグナルを評価・一覧表示（SOLの地合いも連動チェック）
         sol_1h_change = snapshots["SOL"].price_change_1h_pct if "SOL" in snapshots else 0.0
@@ -238,6 +286,7 @@ class SolanaQuantBot:
                     f"損切設定(SL): ${best_signal.stop_loss_price:.5f} (-{best_signal.stop_loss_pct:.2f}%)"
                 )
                 send_telegram_alert(alert_msg)
+                sync_portfolio_state_to_git()
 
         self.print_status_dashboard(latest_prices)
 
@@ -245,17 +294,67 @@ class SolanaQuantBot:
             state = self.risk_manager.state
             total_eq = self.risk_manager.get_total_equity_usdc(latest_prices)
             pnl_pct = ((total_eq - state.initial_usdc) / state.initial_usdc * 100.0) if state.initial_usdc > 0 else 0.0
+            pos_summary = "なし（チャンス待機中）"
+            if state.open_positions:
+                pos_items = []
+                for sym, pos in state.open_positions.items():
+                    cp = latest_prices.get(sym, pos.entry_price)
+                    upct = ((cp - pos.entry_price) / pos.entry_price) * 100.0
+                    pos_items.append(f"{sym} ({upct:+.2f}%)")
+                pos_summary = ", ".join(pos_items)
+
             summary_msg = (
                 f"📊 <b>【Solana クオンツ定期診断レポート ({self.mode})】</b>\n"
                 f"💰 総資産: <b>${total_eq:.4f} USDC ({pnl_pct:+.2f}%)</b>\n"
-                f"🏆 成績: {state.total_trades}戦 {state.winning_trades}勝 | 保有中: {len(state.open_positions)}銘柄\n\n"
+                f"🏆 成績: {state.total_trades}戦 {state.winning_trades}勝 | 保有中: {pos_summary}\n\n"
                 + ("\n".join(report_lines) if report_lines else "※市場データ取得待機中")
             )
             send_telegram_alert(summary_msg)
             print("📲 Telegramに診断レポートを送信しました。")
 
+    def run_cloud_session(
+        self,
+        duration_minutes: int = 210,
+        scan_interval_sec: int = 180,
+        notify_interval_min: int = 30,
+    ) -> None:
+        """
+        GitHub Actionsの無料実行枠（最大6時間）をフル活用し、1回の起動で数時間連続して監視を続けるモード。
+        GitHubのcronタイマー遅延の影響を受けず、3分おきに市場スキャン＆30分おきにTelegram定期レポートを確実に送信する。
+        """
+        print(
+            f"☁️ 【クラウド連続稼働セッション開始】 稼働時間: {duration_minutes}分 | "
+            f"スキャン間隔: {scan_interval_sec}秒 | Telegram定期レポート間隔: {notify_interval_min}分"
+        )
+        start_ts = time.time()
+        end_ts = start_ts + (duration_minutes * 60)
+        last_notify_ts = 0.0
+        notify_interval_sec = notify_interval_min * 60
+
+        cycle_count = 0
+        while time.time() < end_ts:
+            cycle_count += 1
+            now_ts = time.time()
+            should_notify = (now_ts - last_notify_ts) >= notify_interval_sec
+            try:
+                self.run_single_cycle(force_telegram_report=should_notify)
+                if should_notify:
+                    last_notify_ts = time.time()
+                sync_portfolio_state_to_git()
+            except Exception as exc:
+                print(f"【クラウドサイクル警告】サイクル #{cycle_count} で例外発生（次回自動復帰）: {exc}")
+
+            remaining_sec = end_ts - time.time()
+            if remaining_sec <= 15:
+                break
+            sleep_sec = min(scan_interval_sec, int(remaining_sec))
+            print(f"⏳ 次のスキャンまで {sleep_sec} 秒待機中 (残りセッション時間: {int(remaining_sec // 60)}分)...")
+            time.sleep(sleep_sec)
+
+        print("✅ クラウド連続稼働セッションが正常に完了しました。次のジョブへバトンタッチします。")
+
     def run_forever(self) -> None:
-        """指定秒数ごとにマーケットを監視し続けるメインループ。"""
+        """指定秒数ごとにマーケットを監視し続けるローカル用メインループ。"""
         print(
             f"🚀 Solana クオンツ自動売買システムを起動しました "
             f"(モード: {self.mode}, 監視銘柄: {', '.join(SETTINGS.target_symbols)})"
@@ -295,13 +394,36 @@ def main() -> None:
     parser.add_argument(
         "--notify",
         action="store_true",
-        help="売買がなくても現在のスキャン結果と資産レポートをTelegramにテスト送信する",
+        help="売買がなくても現在のスキャン結果と資産レポートをTelegramに送信する",
+    )
+    parser.add_argument(
+        "--cloud-loop",
+        action="store_true",
+        help="GitHub Actions上で数時間連続して監視＆定期Telegram通知を行うクラウド常駐モード",
+    )
+    parser.add_argument(
+        "--duration-minutes",
+        type=int,
+        default=210,
+        help="--cloud-loop 時の連続稼働時間（分、デフォルト210分＝3.5時間）",
+    )
+    parser.add_argument(
+        "--notify-interval-minutes",
+        type=int,
+        default=30,
+        help="--cloud-loop 時のTelegram定期診断レポート送信間隔（分、デフォルト30分）",
     )
     args = parser.parse_args()
 
     bot = SolanaQuantBot(mode=args.mode.upper())
     if args.status:
         bot.print_status_dashboard()
+    elif args.cloud_loop:
+        bot.run_cloud_session(
+            duration_minutes=args.duration_minutes,
+            scan_interval_sec=180,
+            notify_interval_min=args.notify_interval_minutes,
+        )
     elif args.once:
         bot.run_single_cycle(force_telegram_report=args.notify)
     else:
