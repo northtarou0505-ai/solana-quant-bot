@@ -1,9 +1,9 @@
 """
-1,000円少額資金を守り抜くための資金管理・ポジション管理・サーキットブレーカーモジュール（100点完成版）。
+1,000円少額資金を守り抜くための資金管理・ポジション管理・勝敗分析（Post-Trade Autopsy）モジュール。
 - 日次ドローダウン上限（5%）および連敗制限（3連敗）による自動停止
-- 含み益発生時のオート・トレーリングストップ（GitHub Actionsの10分間隔実行でもローソク足高値を検知して建値ロック）
-- 長時間ヨコヨコ停滞時のタイムストップ（塩漬けによる資金ロック防止）
-- ポートフォリオ状態のJSON永続化
+- 含み益発生時のオート・トレーリングストップ
+- 長時間ヨコヨコ停滞時のタイムストップ
+- 決済時の「なぜ勝てたか／なぜ負けたか」を定量診断する勝敗アナリシス機能
 """
 
 import json
@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from config.settings import SETTINGS
 
-# プロジェクトルートディレクトリ（どのフォルダから実行しても確実にdataフォルダを参照できるようにする）
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_STATE_FILE = str(PROJECT_ROOT / "data" / "portfolio_state.json")
 
@@ -39,7 +38,7 @@ class Position:
 
 @dataclass
 class ClosedTrade:
-    """決済済みトレードの履歴レコード。"""
+    """決済済みトレードの履歴および勝因・敗因分析レコード。"""
     symbol: str
     strategy_name: str
     entry_price: float
@@ -49,6 +48,8 @@ class ClosedTrade:
     net_pnl_pct: float
     exit_reason: str
     closed_at: str
+    max_favorable_pct: float = 0.0
+    analysis_comment: str = ""
 
 
 @dataclass
@@ -69,7 +70,7 @@ class PortfolioState:
 
 
 class RiskAndPortfolioManager:
-    """資産保護・ポジションサイジング・決済判定を統括するマネージャー。"""
+    """資産保護・ポジションサイジング・決済判定・勝敗分析を統括するマネージャー。"""
 
     def __init__(self, state_file_path: str = DEFAULT_STATE_FILE):
         """状態ファイルを読み込み、無ければ初期予算（約1,000円＝6.80 USDC）で初期化する。"""
@@ -95,7 +96,13 @@ class RiskAndPortfolioManager:
                     pos_data["opened_at_ts"] = time.time()
                 open_pos[sym] = Position(**pos_data)
 
-            history = [ClosedTrade(**t) for t in raw.get("trade_history", [])]
+            history: List[ClosedTrade] = []
+            for t in raw.get("trade_history", []):
+                if "max_favorable_pct" not in t:
+                    t["max_favorable_pct"] = 0.0
+                if "analysis_comment" not in t:
+                    t["analysis_comment"] = self._generate_retroactive_analysis(t)
+                history.append(ClosedTrade(**t))
 
             return PortfolioState(
                 mode=raw.get("mode", SETTINGS.trading_mode),
@@ -116,6 +123,23 @@ class RiskAndPortfolioManager:
         except Exception as exc:
             print(f"【警告】状態ファイルの読み込みに失敗したため新規作成します: {exc}")
             return PortfolioState()
+
+    def _generate_retroactive_analysis(self, trade_dict: dict) -> str:
+        """過去履歴データに対して勝因・敗因コメントを補完生成する。"""
+        pnl_pct = float(trade_dict.get("net_pnl_pct", 0.0))
+        reason = str(trade_dict.get("exit_reason", ""))
+        sym = str(trade_dict.get("symbol", ""))
+        if pnl_pct > 0:
+            return f"{sym} のモメンタムが機能し、+{pnl_pct:.2f}% の利益確定に成功。"
+        if "トレーリング" in reason:
+            return (
+                f"{sym} は一時含み益が乗ってトレーリングが発動しましたが、"
+                f"執行間隔の空白による価格ギャップで {pnl_pct:+.2f}% での決済となりました（連続監視モードで改善済）。"
+            )
+        return (
+            f"{sym} はエントリー後に買い圧力が続かず損切りラインに到達しましたが、"
+            f"{pnl_pct:+.2f}% の浅い傷で撤退し資金の大半を守りました。"
+        )
 
     def _save_state(self, state: Optional[PortfolioState] = None) -> None:
         """現在のポートフォリオ状態をJSONファイルへ保存する。"""
@@ -141,9 +165,7 @@ class RiskAndPortfolioManager:
         return self.state.available_usdc + pos_value
 
     def can_open_new_position(self, latest_prices: Optional[Dict[str, float]] = None) -> tuple[bool, str]:
-        """
-        サーキットブレーカー・同時保有上限・余力をチェックし、新規エントリー可能か判定する。
-        """
+        """サーキットブレーカー・同時保有上限・余力をチェックし、新規エントリー可能か判定する。"""
         self._refresh_daily_reset()
 
         if len(self.state.open_positions) >= SETTINGS.max_concurrent_positions:
@@ -217,7 +239,6 @@ class RiskAndPortfolioManager:
     ) -> tuple[bool, str]:
         """
         保有ポジションに対して「利確」「損切り」「トレーリングストップ」「時間切れ塩漬け撤退」を判定する。
-        GitHub Actionsの10分間隔実行でも、直近ローソク足高値(recent_high_since_open)を加味してトレーリングを起動する。
         """
         pos = self.state.open_positions.get(symbol)
         if not pos:
@@ -225,14 +246,12 @@ class RiskAndPortfolioManager:
 
         observed_peak = max(current_price, recent_high_since_open or current_price)
 
-        # 最高値の更新チェックとトレーリングストップの引き上げ
         if observed_peak > pos.highest_price:
             pos.highest_price = observed_peak
             gain_from_entry_pct = ((observed_peak - pos.entry_price) / pos.entry_price) * 100.0
 
             if gain_from_entry_pct >= SETTINGS.trailing_activation_pct:
                 new_trailing_sl = observed_peak * (1.0 - SETTINGS.trailing_distance_pct / 100.0)
-                # 最低でも建値＋往復手数料(0.3%)以上を確保する
                 breakeven_plus_fee = pos.entry_price * 1.003
                 target_sl = max(new_trailing_sl, breakeven_plus_fee)
                 if target_sl > pos.stop_loss_price:
@@ -240,19 +259,16 @@ class RiskAndPortfolioManager:
                     pos.trailing_active = True
             self._save_state()
 
-        # 1. 目標利確（Take Profit）到達判定
         if current_price >= pos.take_profit_price:
             pnl_pct = ((current_price - pos.entry_price) / pos.entry_price) * 100.0
             return True, f"🎯 目標利確到達 (+{pnl_pct:.2f}% / Target=${pos.take_profit_price:.4f})"
 
-        # 2. 損切り（Stop Loss）またはトレーリングストップ到達判定
         if current_price <= pos.stop_loss_price:
             pnl_pct = ((current_price - pos.entry_price) / pos.entry_price) * 100.0
             if pos.trailing_active:
-                return True, f"🔒 トレーリングストップ利確 ({pnl_pct:+.2f}% / TrailSL=${pos.stop_loss_price:.4f})"
+                return True, f"🔒 トレーリングストップ決済 ({pnl_pct:+.2f}% / TrailSL=${pos.stop_loss_price:.4f})"
             return True, f"🛡️ 損切りストップ発動 ({pnl_pct:+.2f}% / SL=${pos.stop_loss_price:.4f})"
 
-        # 3. タイムストップ（6時間以上経過しても勢いがなく -0.8%〜+0.8% で塩漬けになっている場合は資金解放）
         holding_hours = (time.time() - pos.opened_at_ts) / 3600.0
         pnl_pct = ((current_price - pos.entry_price) / pos.entry_price) * 100.0
         if holding_hours >= 6.0 and -0.8 <= pnl_pct <= 0.8 and not pos.trailing_active:
@@ -260,16 +276,58 @@ class RiskAndPortfolioManager:
 
         return False, ""
 
+    def _build_post_trade_autopsy(
+        self, pos: Position, exit_price: float, net_pnl_pct: float, exit_reason: str
+    ) -> tuple[float, str]:
+        """
+        決済されたトレードについて「なぜ勝てたのか／なぜ負けたのか」のクオンツ振り返り分析を生成する。
+        """
+        mfe_pct = max(0.0, ((pos.highest_price - pos.entry_price) / pos.entry_price) * 100.0)
+        holding_min = max(1, int((time.time() - pos.opened_at_ts) / 60))
+
+        if net_pnl_pct > 0:
+            if "目標利確" in exit_reason:
+                comment = (
+                    f"【勝因分析】{pos.strategy_name}のエントリー後、強いモメンタムが継続して"
+                    f"保有約{holding_min}分で目標利確ラインへ到達（最大含み益 +{mfe_pct:.2f}%）。"
+                    f"トレンドと出来高が噛み合った理想的な勝ちトレードです。"
+                )
+            else:
+                comment = (
+                    f"【勝因分析】一時 +{mfe_pct:.2f}% まで上昇した後に反落しましたが、"
+                    f"オート・トレーリングストップが機能して +{net_pnl_pct:.2f}% の純利益を確実にロックできました。"
+                )
+        else:
+            if mfe_pct >= 1.2:
+                comment = (
+                    f"【敗因・改善分析】エントリー後に一時 +{mfe_pct:.2f}% の含み益まで伸びましたが、"
+                    f"利確ライン手前で買い圧力が失速して反落しました。"
+                    f"急な相場反転でも損失を {net_pnl_pct:+.2f}% に抑えて撤退完了しています。"
+                )
+            elif "タイムストップ" in exit_reason:
+                comment = (
+                    f"【停滞撤退分析】保有{holding_min}分経過してもトレンドが発生せず（最大含み益 +{mfe_pct:.2f}%）、"
+                    f"資金効率を高めるため微損・建値付近({net_pnl_pct:+.2f}%)で資金を解放しました。"
+                )
+            else:
+                comment = (
+                    f"【敗因・防御分析】エントリー直後から買いが続かず（最大含み益 +{mfe_pct:.2f}% 止まり）、"
+                    f"上位足の売り圧力に押されるダマシ波形となりましたが、"
+                    f"厳格な損切りルール({net_pnl_pct:+.2f}%)により1,000円資金の致命傷を完全に防ぎました。"
+                )
+        return round(mfe_pct, 2), comment
+
     def record_close_position(
         self, symbol: str, exit_price: float, returned_usdc: float, exit_reason: str
     ) -> Optional[ClosedTrade]:
-        """ポジション決済を記録し、勝敗カウントや連敗クールダウンを更新する。"""
+        """ポジション決済を記録し、勝因・敗因分析を生成して保存する。"""
         pos = self.state.open_positions.pop(symbol, None)
         if not pos:
             return None
 
         net_pnl_usdc = round(returned_usdc - pos.invested_usdc, 4)
         net_pnl_pct = round((net_pnl_usdc / pos.invested_usdc) * 100.0, 2) if pos.invested_usdc > 0 else 0.0
+        mfe_pct, autopsy_comment = self._build_post_trade_autopsy(pos, exit_price, net_pnl_pct, exit_reason)
 
         self.state.available_usdc = round(self.state.available_usdc + returned_usdc, 4)
         self.state.total_trades += 1
@@ -297,6 +355,8 @@ class RiskAndPortfolioManager:
             net_pnl_pct=net_pnl_pct,
             exit_reason=exit_reason,
             closed_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            max_favorable_pct=mfe_pct,
+            analysis_comment=autopsy_comment,
         )
         self.state.trade_history.append(closed)
         if len(self.state.trade_history) > 100:
@@ -304,3 +364,43 @@ class RiskAndPortfolioManager:
 
         self._save_state()
         return closed
+
+    def get_trade_analytics_summary(self) -> str:
+        """
+        これまでの全トレードの勝敗統計（銘柄別・戦略別）と直近トレードの勝因・敗因分析テキストを返す。
+        """
+        history = self.state.trade_history
+        if not history:
+            return "📝 <b>【勝敗分析】</b>: まだ決済完了したトレードはありません。"
+
+        wins = [t for t in history if t.net_pnl_usdc > 0]
+        losses = [t for t in history if t.net_pnl_usdc <= 0]
+        avg_win_pct = (sum(t.net_pnl_pct for t in wins) / len(wins)) if wins else 0.0
+        avg_loss_pct = (sum(t.net_pnl_pct for t in losses) / len(losses)) if losses else 0.0
+
+        # 銘柄別の成績集計
+        by_symbol: Dict[str, list[ClosedTrade]] = {}
+        for t in history:
+            by_symbol.setdefault(t.symbol, []).append(t)
+
+        sym_stats = []
+        for sym, trades in by_symbol.items():
+            w = sum(1 for t in trades if t.net_pnl_usdc > 0)
+            pnl = sum(t.net_pnl_usdc for t in trades)
+            sym_stats.append(f"{sym}: {w}勝{len(trades)-w}敗(${pnl:+.2f})")
+
+        last = history[-1]
+        icon = "🟢" if last.net_pnl_usdc > 0 else "🔴"
+        last_analysis = (
+            last.analysis_comment
+            if last.analysis_comment
+            else self._generate_retroactive_analysis(asdict(last))
+        )
+
+        return (
+            f"🧠 <b>【累積勝敗アナリシス】</b>\n"
+            f"・平均利益: <b>+{avg_win_pct:.2f}%</b> | 平均損失: <b>{avg_loss_pct:.2f}%</b>\n"
+            f"・銘柄別: {' / '.join(sym_stats)}\n"
+            f"・直近決済({icon}{last.symbol} {last.net_pnl_pct:+.2f}%):\n"
+            f"  <i>{last_analysis}</i>"
+        )

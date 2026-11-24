@@ -179,8 +179,36 @@ def run_verification() -> None:
     returned_usdc = token_qty * tp_price * 0.9988
     closed = rm.record_close_position("SOL", tp_price, returned_usdc, reason)
     assert closed is not None and closed.net_pnl_usdc > 0
+    print(f"勝因・敗因分析コメント検証: {closed.analysis_comment}")
+    assert "【勝因分析】" in closed.analysis_comment
+    analytics_summary = rm.get_trade_analytics_summary()
+    print(f"累積勝敗アナリシス出力:\n{analytics_summary}")
+    assert "【累積勝敗アナリシス】" in analytics_summary
     if os.path.exists(test_state_file):
         os.remove(test_state_file)
+
+    print("\n=== 3.5 微妙なボーダーライン (ASK) 判定と判断材料 (Pros/Cons) の検証 ===")
+    # 出来高倍率が1.0x（基準1.2x未満）でやや微妙な上昇トレンドデータを生成
+    borderline_candles = generate_mock_uptrend_candles()
+    borderline_candles[-1].volume = 50_000.0
+    borderline_candles[-2].volume = 50_000.0
+    borderline_snap = MarketSnapshot(
+        symbol="RAY",
+        mint_address="4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+        pair_address="test_ray_pool",
+        price_usd=borderline_candles[-1].close,
+        liquidity_usd=3_000_000.0,
+        volume_24h_usd=15_000_000.0,
+        price_change_1h_pct=0.8,
+        price_change_24h_pct=2.1,
+        candles_5m=borderline_candles,
+    )
+    ask_signal = engine.evaluate_snapshot(borderline_snap, sol_1h_change_pct=0.5)
+    print(
+        f"微妙シグナル判定: Action={ask_signal.action} | スコア={ask_signal.confidence_score} | "
+        f"プラス材料={len(ask_signal.pros)}件 | 懸念材料={len(ask_signal.cons)}件"
+    )
+    assert ask_signal.action == "ASK" and len(ask_signal.pros) > 0 and len(ask_signal.cons) > 0
 
     print("\n=== 4. solders 0.27+ VersionedTransaction 署名ロジックの検証 ===")
     kp = Keypair()

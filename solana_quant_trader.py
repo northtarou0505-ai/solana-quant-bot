@@ -1,16 +1,11 @@
 """
-Solana 凄腕クオンツ自動売買ボット（1,000円少額スタート ＆ 高流動性主要銘柄特化・100点完成版）
+Solana 凄腕クオンツ自動売買ボット（AIコパイロット・勝敗分析・Telegram対話型判断伺い搭載 100点完成版）
 対象銘柄: SOL, JUP, RAY, BONK (対USDC決済)
 
-【使い方】
-1. 現在の資産・ポジション状況の確認:
-   python3 solana_quant_trader.py --status
-
-2. リアルタイム市場データを取得して1回だけシグナル判定・仮想売買テストを実行:
-   python3 solana_quant_trader.py --once --notify
-
-3. GitHub Actions クラウド長時間連続稼働モード（3.5時間連続で3分おきに監視し、30分おきにTelegramへ定期レポート送信）:
-   python3 solana_quant_trader.py --cloud-loop --duration-minutes 210 --notify-interval-minutes 30
+【主な機能】
+1. 鉄板シグナル(スコア76点以上): 自動で即エントリーし、買い根拠をTelegramへ通知
+2. 微妙なボーダーライン(スコア60〜75点): 「プラス材料」と「懸念材料」を提示し、Telegramの【🟢買う / ⚪見送る】ボタンでユーザーの判断を仰ぐ
+3. 決済時＆定期レポートの勝敗分析: 「なぜ勝てたか／なぜ負けたか」のクオンツ分析と戦略・銘柄別勝率をTelegramへ通知
 """
 
 import argparse
@@ -20,10 +15,9 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 import requests
 
-# どのディレクトリから実行しても確実にパッケージを解決できるようにパスを追加
 PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -35,28 +29,163 @@ from src.risk.risk_manager import RiskAndPortfolioManager
 from src.strategy.signal_engine import QuantSignalEngine, TradeSignal
 
 
-def send_telegram_alert(message: str) -> None:
-    """環境変数にTelegram設定がある場合のみ、エントリー・決済・定期レポート通知を送信する。"""
+def send_telegram_alert(message: str, reply_markup: Optional[dict] = None) -> Optional[int]:
+    """TelegramへHTMLメッセージを送信し、送信成功時は message_id を返す。"""
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
     if not bot_token or not chat_id or bot_token == "your_telegram_bot_token_here":
-        return
+        return None
 
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload: dict = {"chat_id": chat_id, "text": message, "parse_mode": "HTML"}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+
     try:
-        requests.post(
-            url,
-            json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"},
-            timeout=8,
-        )
+        resp = requests.post(url, json=payload, timeout=8)
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("result", {}).get("message_id")
     except Exception as exc:
         print(f"【Telegram通知警告】送信失敗: {exc}")
+        return None
+
+
+def ask_user_decision_via_telegram(
+    signal: TradeSignal, order_usdc: float, timeout_sec: int = 90
+) -> bool:
+    """
+    微妙なボーダーラインシグナル（スコア60〜75点）の際に、
+    Telegramへ「プラス判断材料」「懸念材料」と【🟢買う / ⚪見送る】ボタンを送信し、
+    ユーザーのワンタップ指示を最大 timeout_sec 秒待機する。
+    """
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+    if not bot_token or not chat_id or bot_token == "your_telegram_bot_token_here":
+        return False
+
+    base_url = f"https://api.telegram.org/bot{bot_token}"
+
+    # 既存の古い未処理アップデートIDをスキップするために最新update_idを取得
+    last_update_id = 0
+    try:
+        init_resp = requests.get(f"{base_url}/getUpdates", params={"timeout": 1}, timeout=5).json()
+        results = init_resp.get("result") or []
+        if results:
+            last_update_id = results[-1]["update_id"]
+    except Exception:
+        pass
+
+    pros_text = "\n".join(f"  ✅ {p}" for p in signal.pros) if signal.pros else "  ・特になし"
+    cons_text = "\n".join(f"  ⚠️ {c}" for c in signal.cons) if signal.cons else "  ・特になし"
+
+    question_text = (
+        f"🤔 <b>【判断伺い：微妙なボーダーライン検出】</b>\n"
+        f"銘柄: <b>{signal.symbol}</b> (現在価格: ${signal.entry_price:.5f})\n"
+        f"候補戦略: {signal.strategy_name} | 確信度: <b>{signal.confidence_score}/100点</b>\n"
+        f"想定投入額: ${order_usdc:.2f} USDC\n"
+        f"目標利確(TP): ${signal.take_profit_price:.5f} (+{signal.take_profit_pct:.2f}%)\n"
+        f"損切設定(SL): ${signal.stop_loss_price:.5f} (-{signal.stop_loss_pct:.2f}%)\n"
+        f"実質リスクリワード比: <b>1 : {signal.net_risk_reward_ratio:.2f}</b>\n\n"
+        f"📊 <b>【プラス材料（買い根拠）】</b>\n{pros_text}\n\n"
+        f"🔍 <b>【懸念材料（微妙な理由）】</b>\n{cons_text}\n\n"
+        f"👇 <b>{timeout_sec}秒以内に下のボタンで指示してください</b>\n"
+        f"<i>（※時間内に応答がない場合は安全のため自動で見送ります）</i>"
+    )
+
+    reply_markup = {
+        "inline_keyboard": [
+            [
+                {"text": f"🟢 買う ({signal.symbol})", "callback_data": f"BUY:{signal.symbol}"},
+                {"text": "⚪ 今回は見送る", "callback_data": f"SKIP:{signal.symbol}"},
+            ]
+        ]
+    }
+
+    msg_id = send_telegram_alert(question_text, reply_markup=reply_markup)
+    if not msg_id:
+        return False
+
+    print(f"📲 Telegramへ {signal.symbol} の判断伺い（ボタン付き）を送信しました。ユーザーの応答を最大{timeout_sec}秒待機中...")
+    start_ts = time.time()
+    decision: Optional[bool] = None
+
+    while time.time() - start_ts < timeout_sec:
+        try:
+            poll_resp = requests.get(
+                f"{base_url}/getUpdates",
+                params={"offset": last_update_id + 1, "timeout": 5},
+                timeout=10,
+            ).json()
+            for upd in poll_resp.get("result") or []:
+                last_update_id = upd["update_id"]
+
+                # 1. インラインボタン（callback_query）が押された場合
+                cb = upd.get("callback_query")
+                if cb:
+                    cb_id = cb.get("id")
+                    cb_data = cb.get("data", "")
+                    if cb_data == f"BUY:{signal.symbol}":
+                        requests.post(
+                            f"{base_url}/answerCallbackQuery",
+                            json={"callback_query_id": cb_id, "text": "🟢 購入指示を受け付けました！"},
+                            timeout=5,
+                        )
+                        decision = True
+                        break
+                    if cb_data == f"SKIP:{signal.symbol}":
+                        requests.post(
+                            f"{base_url}/answerCallbackQuery",
+                            json={"callback_query_id": cb_id, "text": "⚪ 見送り指示を受け付けました。"},
+                            timeout=5,
+                        )
+                        decision = False
+                        break
+
+                # 2. テキストメッセージで「買う」「buy」「見送る」「skip」と返信された場合も対応
+                msg = upd.get("message") or {}
+                if str(msg.get("chat", {}).get("id")) == str(chat_id):
+                    txt = (msg.get("text") or "").strip().lower()
+                    if txt in ("buy", "買う", "yes", "ok", "購入"):
+                        decision = True
+                        break
+                    if txt in ("skip", "no", "見送る", "見送り", "パス"):
+                        decision = False
+                        break
+
+            if decision is not None:
+                break
+        except Exception:
+            time.sleep(2)
+
+    # ボタンを消去して結果をメッセージに追記
+    try:
+        requests.post(
+            f"{base_url}/editMessageReplyMarkup",
+            json={"chat_id": chat_id, "message_id": msg_id, "reply_markup": {"inline_keyboard": []}},
+            timeout=5,
+        )
+    except Exception:
+        pass
+
+    if decision is True:
+        print(f"🟢 ユーザーから【購入(BUY)】の指示を受信しました！ {signal.symbol} をエントリーします。")
+        return True
+    if decision is False:
+        send_telegram_alert(f"⏭️ <b>【見送り完了】</b> あなたの指示により {signal.symbol} のエントリーを見送りました。")
+        print(f"⚪ ユーザーから【見送り(SKIP)】の指示を受信しました。")
+        return False
+
+    send_telegram_alert(
+        f"⏱️ <b>【自動見送り】</b> {timeout_sec}秒以内に応答がなかったため、安全を優先して {signal.symbol} は見送りました。"
+    )
+    print(f"⏱️ 応答タイムアウト（{timeout_sec}秒）のため、安全に見送りました。")
+    return False
 
 
 def sync_portfolio_state_to_git() -> None:
     """
     GitHub Actions上で稼働中、ポジションや資産状態(data/portfolio_state.json)に変更があれば即座にGitへ自動保存する。
-    ※コミットメッセージに [skip ci] を入れるとGitHubの定期タイマー(schedule)まで抑制される仕様があるため、[skip ci] は付けない。
     """
     if os.getenv("GITHUB_ACTIONS") != "true":
         return
@@ -113,6 +242,8 @@ class SolanaQuantBot:
         self.signal_engine = QuantSignalEngine()
         self.risk_manager = RiskAndPortfolioManager()
         self.executor = JupiterSwapExecutor(mode=self.mode)
+        # 同じ微妙銘柄で何度も連続質問しないためのクールダウン記録（銘柄 -> 最終質問時刻）
+        self.last_asked_by_symbol: Dict[str, float] = {}
 
     def print_status_dashboard(self, latest_prices: Dict[str, float] | None = None) -> None:
         """現在の資産状況・勝率・保有ポジションを見やすく表示する。"""
@@ -164,13 +295,45 @@ class SolanaQuantBot:
             print("📂 保有ポジション: なし（厳選シグナル待機中）")
         print("=" * 68)
 
+    def _execute_and_record_entry(self, signal: TradeSignal, order_usdc: float, is_user_approved: bool = False) -> None:
+        """選出またはユーザー承認されたシグナルの購入を執行し、判断材料付きでTelegramへ通知する。"""
+        bought_tokens = self.executor.execute_buy_with_usdc(
+            signal.symbol, order_usdc, signal.entry_price
+        )
+        if bought_tokens and bought_tokens > 0:
+            self.risk_manager.record_open_position(
+                symbol=signal.symbol,
+                mint_address=signal.mint_address,
+                strategy_name=signal.strategy_name,
+                entry_price=signal.entry_price,
+                stop_loss_price=signal.stop_loss_price,
+                take_profit_price=signal.take_profit_price,
+                invested_usdc=order_usdc,
+                token_amount=bought_tokens,
+            )
+            header = (
+                f"🚀 <b>【ユーザー承認エントリー完了 ({self.mode})】</b>"
+                if is_user_approved
+                else f"🚀 <b>【鉄板シグナル自動エントリー完了 ({self.mode})】</b>"
+            )
+            pros_lines = "\n".join(f"  ✅ {p}" for p in signal.pros) if signal.pros else f"  ✅ {signal.reason}"
+            alert_msg = (
+                f"{header}\n"
+                f"銘柄: <b>{signal.symbol}</b> | 戦略: {signal.strategy_name} (スコア {signal.confidence_score}/100)\n"
+                f"取得単価: ${signal.entry_price:.5f} | 投入額: ${order_usdc:.2f} USDC\n"
+                f"利確目標(TP): ${signal.take_profit_price:.5f} (+{signal.take_profit_pct:.2f}%)\n"
+                f"損切設定(SL): ${signal.stop_loss_price:.5f} (-{signal.stop_loss_pct:.2f}%)\n\n"
+                f"📊 <b>【エントリー判断根拠】</b>\n{pros_lines}"
+            )
+            send_telegram_alert(alert_msg)
+            sync_portfolio_state_to_git()
+
     def run_single_cycle(self, force_telegram_report: bool = False) -> None:
         """
         全監視銘柄（SOL, JUP, RAY, BONK）の最新データを取得し、
-        1. 保有ポジションの決済（利確・損切り・トレーリング・タイムストップ）判定
-        2. 新規エントリーの厳選・執行
+        1. 保有ポジションの決済（利確・損切り・トレーリング・タイムストップ）＆勝因・敗因分析の通知
+        2. 新規エントリーの厳選（鉄板BUYは即実行、微妙なASKはTelegramで判断材料を出して指示を仰ぐ）
         を1サイクル実行する。
-        force_telegram_report=True の場合は売買がなくても現在の市場診断レポートをTelegramに送信する。
         """
         snapshots: Dict[str, MarketSnapshot] = {}
         latest_prices: Dict[str, float] = {}
@@ -182,7 +345,7 @@ class SolanaQuantBot:
                 snapshots[symbol] = snap
                 latest_prices[symbol] = snap.price_usd
 
-        # 1. 保有中ポジションの監視とエグジット判定
+        # 1. 保有中ポジションの監視とエグジット判定（勝因・敗因アナリシス付き）
         open_symbols = list(self.risk_manager.state.open_positions.keys())
         for sym in open_symbols:
             cur_price = latest_prices.get(sym)
@@ -210,28 +373,41 @@ class SolanaQuantBot:
                         sym, cur_price, returned_usdc, exit_reason
                     )
                     if closed:
+                        result_badge = "🎉 勝ちトレード" if closed.net_pnl_usdc > 0 else "🛡️ 損切り・撤退トレード"
                         msg = (
-                            f"✅ <b>【ポジション決済完了 ({self.mode})】</b>\n"
-                            f"銘柄: {closed.symbol} ({closed.strategy_name})\n"
+                            f"✅ <b>【ポジション決済完了 ({self.mode}) - {result_badge}】</b>\n"
+                            f"銘柄: <b>{closed.symbol}</b> ({closed.strategy_name})\n"
+                            f"価格: ${closed.entry_price:.5f} -> ${closed.exit_price:.5f} (最大含み益: +{closed.max_favorable_pct:.2f}%)\n"
                             f"理由: {closed.exit_reason}\n"
-                            f"損益: <b>${closed.net_pnl_usdc:+.4f} USDC ({closed.net_pnl_pct:+.2f}%)</b>"
+                            f"純損益: <b>${closed.net_pnl_usdc:+.4f} USDC ({closed.net_pnl_pct:+.2f}%)</b>\n\n"
+                            f"🧠 <b>{closed.analysis_comment}</b>\n\n"
+                            f"{self.risk_manager.get_trade_analytics_summary()}"
                         )
                         print(
                             f"💰 【決済確定】{closed.symbol} 純損益: "
-                            f"${closed.net_pnl_usdc:+.4f} USDC ({closed.net_pnl_pct:+.2f}%)"
+                            f"${closed.net_pnl_usdc:+.4f} USDC ({closed.net_pnl_pct:+.2f}%)\n"
+                            f"   └ {closed.analysis_comment}"
                         )
                         send_telegram_alert(msg)
                         sync_portfolio_state_to_git()
 
-        # 2. 各銘柄のテクニカル指標とシグナルを評価・一覧表示（SOLの地合いも連動チェック）
+        # 2. 各銘柄のテクニカル指標とシグナルを評価・一覧表示
         sol_1h_change = snapshots["SOL"].price_change_1h_pct if "SOL" in snapshots else 0.0
         buy_candidates: list[TradeSignal] = []
+        ask_candidates: list[TradeSignal] = []
         report_lines: list[str] = []
+
         print("\n📈 【クオンツ指標・シグナル判定結果】")
         for symbol, snap in snapshots.items():
             signal = self.signal_engine.evaluate_snapshot(snap, sol_1h_change_pct=sol_1h_change)
             ind = signal.indicators
-            status_icon = "🟢 BUY候補" if signal.action == "BUY" else "⚪ 待機(HOLD)"
+            if signal.action == "BUY":
+                status_icon = "🟢 鉄板BUY"
+            elif signal.action == "ASK":
+                status_icon = "🤔 判断伺い"
+            else:
+                status_icon = "⚪ 待機(HOLD)"
+
             print(
                 f"  [{symbol:<4}] {status_icon} | 価格: ${ind.current_price:<10.5f} | "
                 f"RSI(14): {ind.rsi_14:5.1f} | 出来高倍率: {ind.volume_ratio:4.2f}x | "
@@ -240,53 +416,45 @@ class SolanaQuantBot:
             report_lines.append(
                 f"・<b>{symbol}</b>: ${ind.current_price:.4f} | RSI:{ind.rsi_14:.1f} | Vol:{ind.volume_ratio:.1f}x -> {status_icon}"
             )
-            if signal.action == "BUY" and symbol not in self.risk_manager.state.open_positions:
-                buy_candidates.append(signal)
+            if symbol not in self.risk_manager.state.open_positions:
+                if signal.action == "BUY":
+                    buy_candidates.append(signal)
+                elif signal.action == "ASK":
+                    ask_candidates.append(signal)
 
-        # 3. 新規エントリーの審査・執行（1,000円予算のため最も確信度スコアが高い1銘柄に集中）
+        # 3. 新規エントリーの審査・執行
         can_enter, guard_reason = self.risk_manager.can_open_new_position(latest_prices)
         if not can_enter:
             print(f"\n🛡️ 【リスク管理フィルター】新規エントリー見送り: {guard_reason}")
         elif buy_candidates:
+            # 鉄板シグナル（スコア76点以上）があれば迷わず即エントリー
             buy_candidates.sort(
                 key=lambda s: (s.confidence_score, s.net_risk_reward_ratio),
                 reverse=True,
             )
             best_signal = buy_candidates[0]
             order_usdc = self.risk_manager.calculate_order_size_usdc()
-
             print(
-                f"\n🎯 【最良エントリー選出】{best_signal.symbol} "
-                f"(戦略: {best_signal.strategy_name}, スコア: {best_signal.confidence_score}/100)\n"
-                f"   投入額: ${order_usdc:.2f} USDC | 目標TP: ${best_signal.take_profit_price:.5f} (+{best_signal.take_profit_pct:.2f}%) "
-                f"| 損切SL: ${best_signal.stop_loss_price:.5f} (-{best_signal.stop_loss_pct:.2f}%)"
+                f"\n🎯 【鉄板エントリー選出】{best_signal.symbol} "
+                f"(戦略: {best_signal.strategy_name}, スコア: {best_signal.confidence_score}/100)"
             )
+            self._execute_and_record_entry(best_signal, order_usdc, is_user_approved=False)
 
-            bought_tokens = self.executor.execute_buy_with_usdc(
-                best_signal.symbol, order_usdc, best_signal.entry_price
+        elif ask_candidates:
+            # 鉄板はないが「微妙（スコア60〜75点）」の候補がある場合、判断材料を出してTelegramでユーザーに聞く
+            ask_candidates.sort(
+                key=lambda s: (s.confidence_score, s.net_risk_reward_ratio),
+                reverse=True,
             )
-            if bought_tokens and bought_tokens > 0:
-                self.risk_manager.record_open_position(
-                    symbol=best_signal.symbol,
-                    mint_address=best_signal.mint_address,
-                    strategy_name=best_signal.strategy_name,
-                    entry_price=best_signal.entry_price,
-                    stop_loss_price=best_signal.stop_loss_price,
-                    take_profit_price=best_signal.take_profit_price,
-                    invested_usdc=order_usdc,
-                    token_amount=bought_tokens,
-                )
-                alert_msg = (
-                    f"🚀 <b>【新規エントリー完了 ({self.mode})】</b>\n"
-                    f"銘柄: <b>{best_signal.symbol}</b>\n"
-                    f"戦略: {best_signal.strategy_name} (スコア {best_signal.confidence_score})\n"
-                    f"取得単価: ${best_signal.entry_price:.5f}\n"
-                    f"投入額: ${order_usdc:.2f} USDC\n"
-                    f"利確目標(TP): ${best_signal.take_profit_price:.5f} (+{best_signal.take_profit_pct:.2f}%)\n"
-                    f"損切設定(SL): ${best_signal.stop_loss_price:.5f} (-{best_signal.stop_loss_pct:.2f}%)"
-                )
-                send_telegram_alert(alert_msg)
-                sync_portfolio_state_to_git()
+            best_ask = ask_candidates[0]
+            last_asked = self.last_asked_by_symbol.get(best_ask.symbol, 0.0)
+            # 同じ銘柄について30分以内に質問済みならスパム防止のためスキップ
+            if time.time() - last_asked >= 1800:
+                self.last_asked_by_symbol[best_ask.symbol] = time.time()
+                order_usdc = self.risk_manager.calculate_order_size_usdc()
+                user_approved = ask_user_decision_via_telegram(best_ask, order_usdc, timeout_sec=90)
+                if user_approved:
+                    self._execute_and_record_entry(best_ask, order_usdc, is_user_approved=True)
 
         self.print_status_dashboard(latest_prices)
 
@@ -303,14 +471,16 @@ class SolanaQuantBot:
                     pos_items.append(f"{sym} ({upct:+.2f}%)")
                 pos_summary = ", ".join(pos_items)
 
+            analytics_text = self.risk_manager.get_trade_analytics_summary()
             summary_msg = (
                 f"📊 <b>【Solana クオンツ定期診断レポート ({self.mode})】</b>\n"
                 f"💰 総資産: <b>${total_eq:.4f} USDC ({pnl_pct:+.2f}%)</b>\n"
                 f"🏆 成績: {state.total_trades}戦 {state.winning_trades}勝 | 保有中: {pos_summary}\n\n"
                 + ("\n".join(report_lines) if report_lines else "※市場データ取得待機中")
+                + f"\n\n{analytics_text}"
             )
             send_telegram_alert(summary_msg)
-            print("📲 Telegramに診断レポートを送信しました。")
+            print("📲 Telegramに勝敗分析付き診断レポートを送信しました。")
 
     def run_cloud_session(
         self,
@@ -320,7 +490,6 @@ class SolanaQuantBot:
     ) -> None:
         """
         GitHub Actionsの無料実行枠（最大6時間）をフル活用し、1回の起動で数時間連続して監視を続けるモード。
-        GitHubのcronタイマー遅延の影響を受けず、3分おきに市場スキャン＆30分おきにTelegram定期レポートを確実に送信する。
         """
         print(
             f"☁️ 【クラウド連続稼働セッション開始】 稼働時間: {duration_minutes}分 | "
@@ -394,7 +563,7 @@ def main() -> None:
     parser.add_argument(
         "--notify",
         action="store_true",
-        help="売買がなくても現在のスキャン結果と資産レポートをTelegramに送信する",
+        help="売買がなくても現在のスキャン結果と勝敗分析レポートをTelegramに送信する",
     )
     parser.add_argument(
         "--cloud-loop",
