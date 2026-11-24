@@ -1,9 +1,9 @@
 name: Solana Quant Auto Trader (24/7 Cloud Runner)
 
 on:
-  # 10分おきにクラウド上で自動起動して市場スキャン＆売買判定を実行
+  # 定期自動起動して市場スキャン・売買判定・Telegramレポート送信を実行
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/15 * * * *"
   # GitHub画面の「Run workflow」ボタンからいつでも手動で即時実行も可能
   workflow_dispatch:
     inputs:
@@ -38,9 +38,10 @@ jobs:
 
       - name: 3. 必要なライブラリのインストール
         run: |
+          pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: 4. Solana クオンツ自動売買スキャンを実行 (--once)
+      - name: 4. Solana クオンツ自動売買スキャン＆Telegram通知を実行 (--once --notify)
         env:
           # GitHub Secrets（暗号化金庫）から読み込む。未設定時は安全なPAPERモードで動作
           TRADING_MODE: ${{ github.event.inputs.trading_mode || secrets.TRADING_MODE || 'PAPER' }}
@@ -49,11 +50,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            python solana_quant_trader.py --once --notify
-          else
-            python solana_quant_trader.py --once
-          fi
+          python solana_quant_trader.py --once --notify
 
       - name: 5. ポジション・資産状態 (data/portfolio_state.json) を自動保存
         run: |

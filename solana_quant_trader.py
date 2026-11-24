@@ -309,4 +309,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as fatal_exc:
+        import traceback
+        tb_str = traceback.format_exc()
+        print(f"🚨 【致命的エラー】ボット実行中に予期せぬエラーが発生しました:\n{tb_str}")
+        send_telegram_alert(f"⚠️ <b>【Solanaボット実行エラー通知】</b>\n<pre>{str(fatal_exc)[:300]}</pre>")
+        sys.exit(1)

@@ -1,6 +1,4 @@
-requests
-google-genai
-solana
-solders
-python-dotenv
-base58
+requests>=2.31.0,<3.0.0
+python-dotenv>=1.0.0,<2.0.0
+base58>=2.1.0,<3.0.0
+solders>=0.23.0,<0.30.0

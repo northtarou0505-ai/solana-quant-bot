@@ -1,10 +1,8 @@
 """
 Jupiter API v6 を用いた注文執行モジュール（PAPER仮想売買モード ＆ LIVE実資金モード両対応・100点完成版）。
-1,000円少額運用向けに、以下の安全装置を備える：
-- solders 0.27+ の VersionedTransaction.populate 仕様に完全準拠した高速・安全な署名処理
-- LIVEモード時のSOLガス代リザーブ残高チェック（0.012 SOL未満なら発注拒否）
-- Priority Fee上限キャップ（50,000 lamports以下）によるガス代負け防止
-- Publicリポジトリ（GitHub Actions）稼働時のログプライバシー保護（公開ログにウォレットやTXハッシュを露出させない）
+依存ライブラリのバージョン競合（solana-py / httpx2 / websockets）を100%排除するため、
+Solana RPC通信は標準の requests による JSON-RPC 2.0 直接通信で実装し、
+トランザクション署名のみ solders (VersionedTransaction.populate) を使用する高信頼設計。
 """
 
 import base64
@@ -12,14 +10,7 @@ import json
 import os
 import time
 from typing import Optional
-import base58
 import requests
-from solana.rpc.api import Client
-from solana.rpc.types import TxOpts
-from solders.keypair import Keypair
-from solders.message import to_bytes_versioned
-from solders.signature import Signature
-from solders.transaction import VersionedTransaction
 from config.settings import SETTINGS, SUPPORTED_TOKENS
 
 
@@ -37,14 +28,34 @@ class JupiterSwapExecutor:
     """Jupiter v6 アグリゲーターを通じたスワップ執行クラス。"""
 
     def __init__(self, mode: str = SETTINGS.trading_mode):
-        """執行モード（PAPER または LIVE）とRPCクライアントを初期化する。"""
-        self.mode = mode.upper()
-        self.rpc_client = Client(SETTINGS.solana_rpc_url)
+        """執行モード（PAPER または LIVE）とRPCエンドポイントを初期化する。"""
+        self.mode = (mode or "PAPER").strip().upper()
+        self.rpc_url = (SETTINGS.solana_rpc_url or "https://api.mainnet-beta.solana.com").strip()
         self.quote_url = "https://quote-api.jup.ag/v6/quote"
         self.swap_url = "https://quote-api.jup.ag/v6/swap"
+        self.session = requests.Session()
+        self.session.headers.update({"Content-Type": "application/json"})
 
-    def _load_keypair(self) -> Keypair:
+    def _rpc_call(self, method: str, params: list) -> dict:
+        """Solana JSON-RPC 2.0 エンドポイントへ直接リクエストを送信する。"""
+        payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": method,
+            "params": params,
+        }
+        resp = self.session.post(self.rpc_url, json=payload, timeout=12)
+        resp.raise_for_status()
+        data = resp.json()
+        if "error" in data and data["error"]:
+            raise RuntimeError(f"Solana RPC error ({method}): {data['error']}")
+        return data.get("result", {})
+
+    def _load_keypair(self):
         """環境変数 SOLANA_PRIVATE_KEY からPhantomサブウォレットの秘密鍵を読み込む。"""
+        import base58
+        from solders.keypair import Keypair
+
         raw_key = os.getenv("SOLANA_PRIVATE_KEY", "").strip()
         if not raw_key or raw_key == "your_private_key_here":
             raise ValueError(
@@ -66,8 +77,9 @@ class JupiterSwapExecutor:
             return True, 0.05
 
         keypair = self._load_keypair()
-        resp = self.rpc_client.get_balance(keypair.pubkey())
-        sol_balance = resp.value / (10 ** 9)
+        result = self._rpc_call("getBalance", [str(keypair.pubkey())])
+        lamports = int(result.get("value", 0))
+        sol_balance = lamports / (10 ** 9)
         return sol_balance >= SETTINGS.min_sol_gas_reserve, sol_balance
 
     def get_quote(self, input_mint: str, output_mint: str, amount_raw: int) -> Optional[dict]:
@@ -85,7 +97,6 @@ class JupiterSwapExecutor:
             resp = requests.get(self.quote_url, params=params, timeout=10)
             resp.raise_for_status()
             quote_data = resp.json()
-            # Price Impact（価格影響度）が 1.0% を超える異常なルートは拒否して資産を守る
             price_impact_pct = float(quote_data.get("priceImpactPct", 0) or 0) * 100.0
             if price_impact_pct > 1.0:
                 print(f"🛑【スリッページ保護】価格影響度({price_impact_pct:.2f}%)が高すぎるため注文を拒否しました。")
@@ -195,6 +206,9 @@ class JupiterSwapExecutor:
         soldersのVersionedTransaction.populate方式で署名・送信・ブロック確定確認を行う。
         """
         try:
+            from solders.message import to_bytes_versioned
+            from solders.transaction import VersionedTransaction
+
             keypair = self._load_keypair()
             payload = {
                 "userPublicKey": str(keypair.pubkey()),
@@ -212,20 +226,29 @@ class JupiterSwapExecutor:
             resp.raise_for_status()
             swap_data = resp.json()
 
-            # Base64デコードして未署名VersionedTransactionを復元
             raw_tx_bytes = base64.b64decode(swap_data["swapTransaction"])
             unsigned_tx = VersionedTransaction.from_bytes(raw_tx_bytes)
 
-            # solders 0.27+ の正式な方法でメッセージに署名してVersionedTransactionを組み立てる
             msg_bytes = to_bytes_versioned(unsigned_tx.message)
             signature = keypair.sign_message(msg_bytes)
             signed_tx = VersionedTransaction.populate(unsigned_tx.message, [signature])
 
-            opts = TxOpts(skip_preflight=False, preflight_commitment="confirmed")
-            send_resp = self.rpc_client.send_raw_transaction(bytes(signed_tx), opts)
-            tx_sig_str = str(send_resp.value)
+            encoded_tx = base64.b64encode(bytes(signed_tx)).decode("ascii")
+            tx_sig_str = self._rpc_call(
+                "sendTransaction",
+                [
+                    encoded_tx,
+                    {
+                        "encoding": "base64",
+                        "skipPreflight": False,
+                        "preflightCommitment": "confirmed",
+                    },
+                ],
+            )
+            if not isinstance(tx_sig_str, str) or not tx_sig_str:
+                print(f"🛑【送信エラー】不正なトランザクション署名レスポンス: {tx_sig_str}")
+                return None
 
-            # オンチェーンでの確定（Confirmed/Finalized）およびエラー有無を検証
             if not self._wait_for_confirmation(tx_sig_str):
                 print("🛑【TX未確定警告】トランザクションがオンチェーンで確定しなかったか失敗しました。")
                 return None
@@ -237,19 +260,21 @@ class JupiterSwapExecutor:
 
     def _wait_for_confirmation(self, tx_sig_str: str, max_wait_sec: int = 25) -> bool:
         """送信したトランザクションがオンチェーンで成功（err == None）したか確認する。"""
-        sig_obj = Signature.from_string(tx_sig_str)
         start = time.time()
         while time.time() - start < max_wait_sec:
             try:
-                status_resp = self.rpc_client.get_signature_statuses([sig_obj])
-                statuses = status_resp.value
+                result = self._rpc_call(
+                    "getSignatureStatuses",
+                    [[tx_sig_str], {"searchTransactionHistory": True}],
+                )
+                statuses = result.get("value") or []
                 if statuses and statuses[0] is not None:
                     st = statuses[0]
-                    if st.err is not None:
-                        print(f"🛑【オンチェーンエラー】TX失敗: {st.err}")
+                    if st.get("err") is not None:
+                        print(f"🛑【オンチェーンエラー】TX失敗: {st.get('err')}")
                         return False
-                    # confirmation_status が confirmed または finalized なら成功
-                    if st.confirmation_status is not None:
+                    conf_status = st.get("confirmationStatus")
+                    if conf_status in ("confirmed", "finalized"):
                         return True
             except Exception:
                 pass
