@@ -15,7 +15,7 @@
       "mint_address": "So11111111111111111111111111111111111111112",
       "strategy_name": "Oversold_Mean_Reversion",
       "entry_price": 68.7,
-      "highest_price": 69.1488489658661,
+      "highest_price": 70.0307833126807,
       "stop_loss_price": 67.8756,
       "take_profit_price": 71.31060000000001,
       "invested_usdc": 6.0618,
@@ -35,7 +35,9 @@
       "net_pnl_usdc": -0.1485,
       "net_pnl_pct": -2.3,
       "exit_reason": "🛡️ 損切りストップ発動 (-2.05% / SL=$1.4425)",
-      "closed_at": "2026-11-18 20:40:29"
+      "closed_at": "2026-11-18 20:40:29",
+      "max_favorable_pct": 0.0,
+      "analysis_comment": "RAY はエントリー後に買い圧力が続かず損切りラインに到達しましたが、-2.30% の浅い傷で撤退し資金の大半を守りました。"
     },
     {
       "symbol": "SOL",
@@ -46,7 +48,9 @@
       "net_pnl_usdc": -0.1692,
       "net_pnl_pct": -2.68,
       "exit_reason": "🔒 トレーリングストップ利確 (-2.43% / TrailSL=$73.4855)",
-      "closed_at": "2026-11-24 03:46:42"
+      "closed_at": "2026-11-24 03:46:42",
+      "max_favorable_pct": 0.0,
+      "analysis_comment": "SOL は一時含み益が乗ってトレーリングが発動しましたが、執行間隔の空白による価格ギャップで -2.68% での決済となりました（連続監視モードで改善済）。"
     },
     {
       "symbol": "SOL",
@@ -57,7 +61,9 @@
       "net_pnl_usdc": -0.1015,
       "net_pnl_pct": -1.65,
       "exit_reason": "🛡️ 損切りストップ発動 (-1.40% / SL=$69.0414)",
-      "closed_at": "2026-11-24 15:18:23"
+      "closed_at": "2026-11-24 15:18:23",
+      "max_favorable_pct": 0.0,
+      "analysis_comment": "SOL はエントリー後に買い圧力が続かず損切りラインに到達しましたが、-1.65% の浅い傷で撤退し資金の大半を守りました。"
     }
   ]
 }
