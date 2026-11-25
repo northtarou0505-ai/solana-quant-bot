@@ -1,30 +1,15 @@
 {
   "mode": "PAPER",
   "initial_usdc": 6.8,
-  "available_usdc": 0.3234,
+  "available_usdc": 6.9874,
   "daily_start_equity_usdc": 6.37322275,
   "current_date": "2026-11-25",
   "consecutive_losses": 0,
   "cooldown_until_ts": 1795537103.325258,
-  "total_trades": 6,
-  "winning_trades": 2,
-  "total_net_pnl_usdc": -0.3323,
-  "open_positions": {
-    "SOL": {
-      "symbol": "SOL",
-      "mint_address": "So11111111111111111111111111111111111111112",
-      "strategy_name": "Trend_Breakout_Follow",
-      "entry_price": 70.33,
-      "highest_price": 70.59510378616339,
-      "stop_loss_price": 69.21872033589226,
-      "take_profit_price": 73.00254,
-      "invested_usdc": 6.1443,
-      "token_amount": 0.08725465128679086,
-      "opened_at": "2026-11-25 20:11:06",
-      "opened_at_ts": 1795637466.1814506,
-      "trailing_active": false
-    }
-  },
+  "total_trades": 7,
+  "winning_trades": 3,
+  "total_net_pnl_usdc": 0.1874,
+  "open_positions": {},
   "trade_history": [
     {
       "symbol": "RAY",
@@ -103,6 +88,19 @@
       "closed_at": "2026-11-25 18:27:39",
       "max_favorable_pct": 3.5,
       "analysis_comment": "【勝因分析】一時 +3.50% まで上昇した後に反落しましたが、オート・トレーリングストップが機能して +2.18% の純利益を確実にロックできました。"
+    },
+    {
+      "symbol": "SOL",
+      "strategy_name": "Trend_Breakout_Follow",
+      "entry_price": 70.33,
+      "exit_price": 76.47,
+      "invested_usdc": 6.1443,
+      "net_pnl_usdc": 0.5197,
+      "net_pnl_pct": 8.46,
+      "exit_reason": "🎯 目標利確到達 (+8.73% / Target=$73.0025)",
+      "closed_at": "2026-11-25 20:44:32",
+      "max_favorable_pct": 8.73,
+      "analysis_comment": "【勝因分析】Trend_Breakout_Followのエントリー後、強いモメンタムが継続して保有約33分で目標利確ラインへ到達（最大含み益 +8.73%）。トレンドと出来高が噛み合った理想的な勝ちトレードです。"
     }
   ]
 }
