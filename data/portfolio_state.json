@@ -1,30 +1,15 @@
 {
   "mode": "PAPER",
   "initial_usdc": 6.8,
-  "available_usdc": 0.3168,
+  "available_usdc": 6.4677,
   "daily_start_equity_usdc": 6.37322275,
   "current_date": "2026-11-25",
-  "consecutive_losses": 1,
+  "consecutive_losses": 0,
   "cooldown_until_ts": 1795537103.325258,
-  "total_trades": 5,
-  "winning_trades": 1,
-  "total_net_pnl_usdc": -0.4635,
-  "open_positions": {
-    "SOL": {
-      "symbol": "SOL",
-      "mint_address": "So11111111111111111111111111111111111111112",
-      "strategy_name": "Oversold_Mean_Reversion",
-      "entry_price": 67.73,
-      "highest_price": 70.10246286734579,
-      "stop_loss_price": 69.40143823867233,
-      "take_profit_price": 70.30374,
-      "invested_usdc": 6.0197,
-      "token_amount": 0.08876680016240958,
-      "opened_at": "2026-11-25 08:22:53",
-      "opened_at_ts": 1795594973.2654636,
-      "trailing_active": true
-    }
-  },
+  "total_trades": 6,
+  "winning_trades": 2,
+  "total_net_pnl_usdc": -0.3323,
+  "open_positions": {},
   "trade_history": [
     {
       "symbol": "RAY",
@@ -90,6 +75,19 @@
       "closed_at": "2026-11-25 08:13:43",
       "max_favorable_pct": 1.43,
       "analysis_comment": "【敗因・改善分析】エントリー後に一時 +1.43% の含み益まで伸びましたが、利確ライン手前で買い圧力が失速して反落しました。急な相場反転でも損失を -1.47% に抑えて撤退完了しています。"
+    },
+    {
+      "symbol": "SOL",
+      "strategy_name": "Oversold_Mean_Reversion",
+      "entry_price": 67.73,
+      "exit_price": 69.38,
+      "invested_usdc": 6.0197,
+      "net_pnl_usdc": 0.1312,
+      "net_pnl_pct": 2.18,
+      "exit_reason": "🔒 トレーリングストップ決済 (+2.44% / TrailSL=$69.4014)",
+      "closed_at": "2026-11-25 18:27:39",
+      "max_favorable_pct": 3.5,
+      "analysis_comment": "【勝因分析】一時 +3.50% まで上昇した後に反落しましたが、オート・トレーリングストップが機能して +2.18% の純利益を確実にロックできました。"
     }
   ]
 }
