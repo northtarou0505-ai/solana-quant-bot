@@ -1,7 +1,7 @@
 {
   "mode": "PAPER",
   "initial_usdc": 6.8,
-  "available_usdc": 6.4677,
+  "available_usdc": 0.3234,
   "daily_start_equity_usdc": 6.37322275,
   "current_date": "2026-11-25",
   "consecutive_losses": 0,
@@ -9,7 +9,22 @@
   "total_trades": 6,
   "winning_trades": 2,
   "total_net_pnl_usdc": -0.3323,
-  "open_positions": {},
+  "open_positions": {
+    "SOL": {
+      "symbol": "SOL",
+      "mint_address": "So11111111111111111111111111111111111111112",
+      "strategy_name": "Trend_Breakout_Follow",
+      "entry_price": 70.33,
+      "highest_price": 70.33,
+      "stop_loss_price": 69.21872033589226,
+      "take_profit_price": 73.00254,
+      "invested_usdc": 6.1443,
+      "token_amount": 0.08725465128679086,
+      "opened_at": "2026-11-25 20:11:06",
+      "opened_at_ts": 1795637466.1814506,
+      "trailing_active": false
+    }
+  },
   "trade_history": [
     {
       "symbol": "RAY",
