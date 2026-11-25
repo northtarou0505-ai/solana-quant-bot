@@ -1,5 +1,5 @@
 """
-クオンツ取引に必要なテクニカル指標（EMA, RSI, ボリンジャーバンド, ATR, 出来高倍率, ローソク足プライスアクション）を計算するモジュール。
+クオンツ取引に必要なテクニカル指標（EMA, RSI, ボリンジャーバンド, ATR, 出来高倍率, 相場レジーム判定, 二番底・プライスアクション）を計算するモジュール。
 外部C拡張ライブラリに依存せず、標準ライブラリのみで高速・正確に算出する。
 """
 
@@ -11,11 +11,13 @@ from src.data.market_data import Candle
 
 @dataclass
 class TechnicalIndicators:
-    """算出された最新のテクニカル指標およびプライスアクション指標セット。"""
+    """算出された最新のテクニカル指標・相場環境（レジーム）・プライスアクション指標セット。"""
     current_price: float
     ema_9: float
     ema_21: float
     ema_50: float
+    ema_50_slope_pct: float  # 直近1時間(12本)での長期トレンド傾き(%)
+    market_regime: str       # "BULL_TREND" (上昇期), "RANGE_CHOP" (レンジ期), "BEAR_DOWNTREND" (下落調整期)
     rsi_14: float
     bb_upper: float
     bb_middle: float
@@ -26,6 +28,8 @@ class TechnicalIndicators:
     volume_ratio: float
     is_bullish_candle: bool
     close_position_in_range: float  # ローソク足の安値〜高値に対する終値の位置 (0.0=最安値引け, 1.0=最高値引け)
+    is_higher_low_or_reversal: bool  # 直近足が安値切り上げ（二番底）または前足実体を包む強い反発陽線か
+    touched_bb_lower: bool           # 直近足の安値(Low)または現在価格がボリンジャーバンド下限に到達したか
 
 
 def calculate_ema(values: List[float], period: int) -> float:
@@ -111,7 +115,7 @@ def calculate_atr(candles: List[Candle], period: int = 14) -> float:
 
 
 def compute_all_indicators(candles: List[Candle], latest_spot_price: float = 0.0) -> TechnicalIndicators:
-    """ローソク足リストから全テクニカル指標とプライスアクション強度を一括算出する。"""
+    """ローソク足リストから全テクニカル指標・相場レジーム・プライスアクション強度を一括算出する。"""
     closes = [c.close for c in candles]
     volumes = [c.volume for c in candles]
     current_price = latest_spot_price if latest_spot_price > 0 else closes[-1]
@@ -119,12 +123,27 @@ def compute_all_indicators(candles: List[Candle], latest_spot_price: float = 0.0
     ema_9 = calculate_ema(closes, 9)
     ema_21 = calculate_ema(closes, 21)
     ema_50 = calculate_ema(closes, 50)
+
+    # 1時間前（12本前）のEMA50と比較して上位足のトレンド傾き(%)を算出
+    if len(closes) > 15:
+        prev_ema_50 = calculate_ema(closes[:-12], min(50, len(closes) - 12))
+        ema_50_slope_pct = ((ema_50 - prev_ema_50) / prev_ema_50 * 100.0) if prev_ema_50 > 0 else 0.0
+    else:
+        ema_50_slope_pct = 0.0
+
+    # 相場レジーム（時期・地合い）の3分類
+    if ema_9 > ema_21 and ema_21 >= ema_50 * 0.998 and ema_50_slope_pct >= -0.15:
+        market_regime = "BULL_TREND"
+    elif ema_21 < ema_50 * 0.996 and ema_50_slope_pct <= -0.35:
+        market_regime = "BEAR_DOWNTREND"
+    else:
+        market_regime = "RANGE_CHOP"
+
     rsi_14 = calculate_rsi(closes, 14)
     bb_upper, bb_middle, bb_lower, bb_width_pct = calculate_bollinger_bands(closes, 20, 2.0)
     atr_14 = calculate_atr(candles, 14)
     atr_pct = (atr_14 / current_price * 100.0) if current_price > 0 else 1.0
 
-    # 直近20本の平均出来高に対する最新確定足の出来高倍率
     vol_window = volumes[-21:-1] if len(volumes) > 21 else volumes[:-1]
     avg_vol = (sum(vol_window) / len(vol_window)) if vol_window else 1.0
     latest_vol = volumes[-1] if volumes else 0.0
@@ -140,11 +159,25 @@ def compute_all_indicators(candles: List[Candle], latest_spot_price: float = 0.0
     else:
         close_position_in_range = 0.5
 
+    # 安値切り上げ（二番底）または前足高値を上抜く強い反転足かどうかの確認（下落途中の1本目ナイフ掴み防止）
+    if len(candles) >= 3:
+        prev_c = candles[-2]
+        prev2_c = candles[-3]
+        higher_low = last_candle.low >= min(prev_c.low, prev2_c.low) * 0.999
+        bullish_engulf = is_bullish_candle and (last_candle.close >= prev_c.open)
+        is_higher_low_or_reversal = higher_low or bullish_engulf
+    else:
+        is_higher_low_or_reversal = is_bullish_candle
+
+    touched_bb_lower = (last_candle.low <= bb_lower * 1.005) or (current_price <= bb_lower * 1.005)
+
     return TechnicalIndicators(
         current_price=current_price,
         ema_9=ema_9,
         ema_21=ema_21,
         ema_50=ema_50,
+        ema_50_slope_pct=ema_50_slope_pct,
+        market_regime=market_regime,
         rsi_14=rsi_14,
         bb_upper=bb_upper,
         bb_middle=bb_middle,
@@ -155,4 +188,6 @@ def compute_all_indicators(candles: List[Candle], latest_spot_price: float = 0.0
         volume_ratio=volume_ratio,
         is_bullish_candle=is_bullish_candle,
         close_position_in_range=close_position_in_range,
+        is_higher_low_or_reversal=is_higher_low_or_reversal,
+        touched_bb_lower=touched_bb_lower,
     )

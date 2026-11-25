@@ -250,6 +250,14 @@ class RiskAndPortfolioManager:
             pos.highest_price = observed_peak
             gain_from_entry_pct = ((observed_peak - pos.entry_price) / pos.entry_price) * 100.0
 
+            # Stage 1: 早期建値ロック（含み益が +1.1% に到達したら、損切りラインを「買値+0.25%」へ引き上げて負け転落を100%防ぐ）
+            if gain_from_entry_pct >= SETTINGS.breakeven_activation_pct:
+                breakeven_shield_sl = pos.entry_price * (1.0 + SETTINGS.breakeven_lock_pct / 100.0)
+                if breakeven_shield_sl > pos.stop_loss_price:
+                    pos.stop_loss_price = breakeven_shield_sl
+                    pos.trailing_active = True
+
+            # Stage 2: 本格トレーリング追従（含み益が +2.0% を超えたら、最高値から -0.85% 幅で利益を伸ばしながら追従ロック）
             if gain_from_entry_pct >= SETTINGS.trailing_activation_pct:
                 new_trailing_sl = observed_peak * (1.0 - SETTINGS.trailing_distance_pct / 100.0)
                 breakeven_plus_fee = pos.entry_price * 1.003

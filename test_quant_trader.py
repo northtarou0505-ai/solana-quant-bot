@@ -50,11 +50,15 @@ def generate_mock_uptrend_candles() -> list[Candle]:
 
 
 def generate_mock_oversold_bounce_candles() -> list[Candle]:
-    """一時的な急落でRSI<=34・BB下限に到達した直後、強い下ヒゲ陽線で反発した5分足データを生成する。"""
+    """レンジ〜緩やかな押し目局面でRSI<=33・BB下限に到達した直後、二番底（包み陽線）＋高出来高で反発した5分足データを生成する。"""
     candles: list[Candle] = []
     price = 100.0
     for i in range(59):
-        delta = -0.35 if i > 40 else -0.05
+        # 前半45本はレンジを維持してEMA50傾きをフラットに保ち、直近14本で急な押し目を形成
+        if i < 45:
+            delta = 0.05 if i % 2 == 0 else -0.05
+        else:
+            delta = -0.22
         open_p = price
         close_p = price + delta
         high_p = max(open_p, close_p) + 0.05
@@ -71,10 +75,10 @@ def generate_mock_oversold_bounce_candles() -> list[Candle]:
         )
         price = close_p
 
-    # 60本目: セリングクライマックスからの力強い下ヒゲ反発陽線（終値が高値付近）
+    # 60本目: 前足を包む力強い下ヒゲ反発陽線（終値が高値付近・出来高2.3倍）
     open_p = price
-    low_p = price - 0.80
-    close_p = price + 0.25
+    low_p = price - 0.60
+    close_p = price + 0.30
     high_p = close_p + 0.05
     candles.append(
         Candle(
@@ -159,18 +163,29 @@ def run_verification() -> None:
         token_amount=token_qty,
     )
 
-    # GitHub Actionsが10分後に起きた時、現在価格は +1.2% だが、途中の5分足高値で +2.5% をつけていたケース
-    current_pullback_price = signal.entry_price * 1.012
-    candle_high_between_runs = signal.entry_price * 1.025
+    # GitHub Actionsが10分後に起きた時、現在価格は +0.8% だが、途中の5分足高値で +1.43% (実トレード5戦目相当) をつけていたケース
+    current_pullback_price = signal.entry_price * 1.008
+    candle_high_stage1 = signal.entry_price * 1.0143
     should_exit, _ = rm.check_exit_conditions(
-        "SOL", current_pullback_price, recent_high_since_open=candle_high_between_runs
+        "SOL", current_pullback_price, recent_high_since_open=candle_high_stage1
     )
     pos = rm.state.open_positions["SOL"]
     print(
-        f"10分間隔の間欠実行でも途中高値(${candle_high_between_runs:.2f})を検知 -> "
-        f"トレーリング稼働={pos.trailing_active}, 引き上げ後SL=${pos.stop_loss_price:.4f}"
+        f"Stage 1 早期建値ロック検証 (+1.43%到達時) -> "
+        f"トレーリング稼働={pos.trailing_active}, 引き上げ後SL=${pos.stop_loss_price:.4f} (建値=${signal.entry_price:.4f}以上を即確保!)"
     )
     assert pos.trailing_active and pos.stop_loss_price > signal.entry_price
+
+    # さらに +2.5% 到達で Stage 2 本格トレーリングが追従するか検証
+    candle_high_stage2 = signal.entry_price * 1.025
+    should_exit, _ = rm.check_exit_conditions(
+        "SOL", current_pullback_price, recent_high_since_open=candle_high_stage2
+    )
+    pos = rm.state.open_positions["SOL"]
+    print(
+        f"Stage 2 本格トレーリング検証 (+2.50%到達時) -> "
+        f"さらに引き上げられたSL=${pos.stop_loss_price:.4f}"
+    )
 
     # 目標利確到達と決済記録
     tp_price = signal.take_profit_price * 1.002

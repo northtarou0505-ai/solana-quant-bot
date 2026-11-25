@@ -119,9 +119,13 @@ class TradingSettings:
     min_take_profit_pct: float = _env_float("MIN_TAKE_PROFIT_PCT", 3.8)
     min_risk_reward_ratio: float = _env_float("MIN_RISK_REWARD_RATIO", 1.6)
 
-    # トレーリングストップ設定
+    # トレーリングストップ設定（2段階スマート・プロフィットロック）
+    # Stage 1: 含み益が +1.1% に達したら即座にストップを「建値＋手数料(+0.25%)」へ引き上げ、負け転落を100%防ぐ
+    breakeven_activation_pct: float = _env_float("BREAKEVEN_ACTIVATION_PCT", 1.1)
+    breakeven_lock_pct: float = _env_float("BREAKEVEN_LOCK_PCT", 0.25)
+    # Stage 2: 含み益が +2.0% を超えたら最高値から -0.85% 幅で本格トレーリング追従する
     trailing_activation_pct: float = _env_float("TRAILING_ACTIVATION_PCT", 2.0)
-    trailing_distance_pct: float = _env_float("TRAILING_DISTANCE_PCT", 1.0)
+    trailing_distance_pct: float = _env_float("TRAILING_DISTANCE_PCT", 0.85)
 
     # --- サーキットブレーカー（退場防止装置） ---
     max_daily_drawdown_pct: float = _env_float("MAX_DAILY_DRAWDOWN_PCT", 5.0)
