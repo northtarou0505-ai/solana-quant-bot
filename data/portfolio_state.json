@@ -1,30 +1,15 @@
 {
   "mode": "PAPER",
   "initial_usdc": 6.8,
-  "available_usdc": 0.3549,
+  "available_usdc": 6.9848,
   "daily_start_equity_usdc": 6.979102500000001,
   "current_date": "2026-11-26",
-  "consecutive_losses": 2,
-  "cooldown_until_ts": 1795537103.325258,
-  "total_trades": 10,
+  "consecutive_losses": 3,
+  "cooldown_until_ts": 1795703104.4834495,
+  "total_trades": 11,
   "winning_trades": 4,
-  "total_net_pnl_usdc": 0.2986,
-  "open_positions": {
-    "JUP": {
-      "symbol": "JUP",
-      "mint_address": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
-      "strategy_name": "Trend_Breakout_Follow",
-      "entry_price": 0.236,
-      "highest_price": 0.2367277440945995,
-      "stop_loss_price": 0.23305,
-      "take_profit_price": 0.244968,
-      "invested_usdc": 6.7437,
-      "token_amount": 28.539281250000002,
-      "opened_at": "2026-11-26 12:12:17",
-      "opened_at_ts": 1795695137.841717,
-      "trailing_active": false
-    }
-  },
+  "total_net_pnl_usdc": 0.1848,
+  "open_positions": {},
   "trade_history": [
     {
       "symbol": "RAY",
@@ -155,6 +140,19 @@
       "closed_at": "2026-11-26 11:53:55",
       "max_favorable_pct": 1.13,
       "analysis_comment": "【敗因・防御分析】エントリー直後から買いが続かず（最大含み益 +1.13% 止まり）、上位足の売り圧力に押されるダマシ波形となりましたが、厳格な損切りルール(-0.04%)により1,000円資金の致命傷を完全に防ぎました。"
+    },
+    {
+      "symbol": "JUP",
+      "strategy_name": "Trend_Breakout_Follow",
+      "entry_price": 0.236,
+      "exit_price": 0.2326,
+      "invested_usdc": 6.7437,
+      "net_pnl_usdc": -0.1138,
+      "net_pnl_pct": -1.69,
+      "exit_reason": "🛡️ 損切りストップ発動 (-1.44% / SL=$0.2331)",
+      "closed_at": "2026-11-26 13:25:04",
+      "max_favorable_pct": 0.31,
+      "analysis_comment": "【敗因・防御分析】エントリー直後から買いが続かず（最大含み益 +0.31% 止まり）、上位足の売り圧力に押されるダマシ波形となりましたが、厳格な損切りルール(-1.69%)により1,000円資金の致命傷を完全に防ぎました。"
     }
   ]
 }
