@@ -1,30 +1,15 @@
 {
   "mode": "PAPER",
   "initial_usdc": 6.8,
-  "available_usdc": 0.3551,
+  "available_usdc": 7.0986,
   "daily_start_equity_usdc": 6.979102500000001,
   "current_date": "2026-11-26",
-  "consecutive_losses": 1,
+  "consecutive_losses": 2,
   "cooldown_until_ts": 1795537103.325258,
-  "total_trades": 9,
+  "total_trades": 10,
   "winning_trades": 4,
-  "total_net_pnl_usdc": 0.301,
-  "open_positions": {
-    "JUP": {
-      "symbol": "JUP",
-      "mint_address": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
-      "strategy_name": "Trend_Breakout_Follow",
-      "entry_price": 0.2335,
-      "highest_price": 0.23614253289485332,
-      "stop_loss_price": 0.23408375,
-      "take_profit_price": 0.24237300000000003,
-      "invested_usdc": 6.7459,
-      "token_amount": 28.85425107066381,
-      "opened_at": "2026-11-26 07:20:11",
-      "opened_at_ts": 1795677611.850411,
-      "trailing_active": true
-    }
-  },
+  "total_net_pnl_usdc": 0.2986,
+  "open_positions": {},
   "trade_history": [
     {
       "symbol": "RAY",
@@ -142,6 +127,19 @@
       "closed_at": "2026-11-26 07:09:31",
       "max_favorable_pct": 1.06,
       "analysis_comment": "【停滞撤退分析】保有362分経過してもトレンドが発生せず（最大含み益 +1.06%）、資金効率を高めるため微損・建値付近(-0.33%)で資金を解放しました。"
+    },
+    {
+      "symbol": "JUP",
+      "strategy_name": "Trend_Breakout_Follow",
+      "entry_price": 0.2335,
+      "exit_price": 0.234,
+      "invested_usdc": 6.7459,
+      "net_pnl_usdc": -0.0024,
+      "net_pnl_pct": -0.04,
+      "exit_reason": "🔒 トレーリングストップ決済 (+0.21% / TrailSL=$0.2341)",
+      "closed_at": "2026-11-26 11:53:55",
+      "max_favorable_pct": 1.13,
+      "analysis_comment": "【敗因・防御分析】エントリー直後から買いが続かず（最大含み益 +1.13% 止まり）、上位足の売り圧力に押されるダマシ波形となりましたが、厳格な損切りルール(-0.04%)により1,000円資金の致命傷を完全に防ぎました。"
     }
   ]
 }
