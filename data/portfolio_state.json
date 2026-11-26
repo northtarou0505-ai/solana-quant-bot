@@ -15,7 +15,7 @@
       "mint_address": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
       "strategy_name": "Trend_Breakout_Follow",
       "entry_price": 0.236,
-      "highest_price": 0.236,
+      "highest_price": 0.2367277440945995,
       "stop_loss_price": 0.23305,
       "take_profit_price": 0.244968,
       "invested_usdc": 6.7437,
