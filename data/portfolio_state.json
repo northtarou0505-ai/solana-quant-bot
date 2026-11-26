@@ -1,7 +1,7 @@
 {
   "mode": "PAPER",
   "initial_usdc": 6.8,
-  "available_usdc": 7.0986,
+  "available_usdc": 0.3549,
   "daily_start_equity_usdc": 6.979102500000001,
   "current_date": "2026-11-26",
   "consecutive_losses": 2,
@@ -9,7 +9,22 @@
   "total_trades": 10,
   "winning_trades": 4,
   "total_net_pnl_usdc": 0.2986,
-  "open_positions": {},
+  "open_positions": {
+    "JUP": {
+      "symbol": "JUP",
+      "mint_address": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+      "strategy_name": "Trend_Breakout_Follow",
+      "entry_price": 0.236,
+      "highest_price": 0.236,
+      "stop_loss_price": 0.23305,
+      "take_profit_price": 0.244968,
+      "invested_usdc": 6.7437,
+      "token_amount": 28.539281250000002,
+      "opened_at": "2026-11-26 12:12:17",
+      "opened_at_ts": 1795695137.841717,
+      "trailing_active": false
+    }
+  },
   "trade_history": [
     {
       "symbol": "RAY",
