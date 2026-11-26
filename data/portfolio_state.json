@@ -1,30 +1,15 @@
 {
   "mode": "PAPER",
   "initial_usdc": 6.8,
-  "available_usdc": 0.3494,
-  "daily_start_equity_usdc": 6.37322275,
-  "current_date": "2026-11-25",
+  "available_usdc": 7.1236,
+  "daily_start_equity_usdc": 6.979102500000001,
+  "current_date": "2026-11-26",
   "consecutive_losses": 0,
   "cooldown_until_ts": 1795537103.325258,
-  "total_trades": 7,
-  "winning_trades": 3,
-  "total_net_pnl_usdc": 0.1874,
-  "open_positions": {
-    "RAY": {
-      "symbol": "RAY",
-      "mint_address": "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
-      "strategy_name": "Trend_Breakout_Follow",
-      "entry_price": 1.3,
-      "highest_price": 1.3059606759020825,
-      "stop_loss_price": 1.2792263415917886,
-      "take_profit_price": 1.3494000000000002,
-      "invested_usdc": 6.638,
-      "token_amount": 5.099771153846154,
-      "opened_at": "2026-11-25 20:56:47",
-      "opened_at_ts": 1795640207.806976,
-      "trailing_active": false
-    }
-  },
+  "total_trades": 8,
+  "winning_trades": 4,
+  "total_net_pnl_usdc": 0.3236,
+  "open_positions": {},
   "trade_history": [
     {
       "symbol": "RAY",
@@ -116,6 +101,19 @@
       "closed_at": "2026-11-25 20:44:32",
       "max_favorable_pct": 8.73,
       "analysis_comment": "【勝因分析】Trend_Breakout_Followのエントリー後、強いモメンタムが継続して保有約33分で目標利確ラインへ到達（最大含み益 +8.73%）。トレンドと出来高が噛み合った理想的な勝ちトレードです。"
+    },
+    {
+      "symbol": "RAY",
+      "strategy_name": "Trend_Breakout_Follow",
+      "entry_price": 1.3,
+      "exit_price": 1.33,
+      "invested_usdc": 6.638,
+      "net_pnl_usdc": 0.1362,
+      "net_pnl_pct": 2.05,
+      "exit_reason": "🔒 トレーリングストップ決済 (+2.31% / TrailSL=$1.3340)",
+      "closed_at": "2026-11-26 01:07:04",
+      "max_favorable_pct": 3.49,
+      "analysis_comment": "【勝因分析】一時 +3.49% まで上昇した後に反落しましたが、オート・トレーリングストップが機能して +2.05% の純利益を確実にロックできました。"
     }
   ]
 }
