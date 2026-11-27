@@ -15,14 +15,14 @@
       "mint_address": "So11111111111111111111111111111111111111112",
       "strategy_name": "Trend_Breakout_Follow",
       "entry_price": 71.32,
-      "highest_price": 71.8169693238945,
-      "stop_loss_price": 70.4285,
+      "highest_price": 72.32771028003239,
+      "stop_loss_price": 71.49829999999999,
       "take_profit_price": 74.03016,
       "invested_usdc": 6.5123,
       "token_amount": 0.09119685396803141,
       "opened_at": "2026-11-26 21:05:07",
       "opened_at_ts": 1795727107.6095107,
-      "trailing_active": false
+      "trailing_active": true
     }
   },
   "trade_history": [
