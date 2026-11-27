@@ -1,30 +1,15 @@
 {
   "mode": "PAPER",
   "initial_usdc": 6.8,
-  "available_usdc": 0.3428,
+  "available_usdc": 6.9454,
   "daily_start_equity_usdc": 6.846959625,
   "current_date": "2026-11-27",
-  "consecutive_losses": 4,
+  "consecutive_losses": 0,
   "cooldown_until_ts": 1795727065.009392,
-  "total_trades": 12,
-  "winning_trades": 4,
-  "total_net_pnl_usdc": 0.0551,
-  "open_positions": {
-    "SOL": {
-      "symbol": "SOL",
-      "mint_address": "So11111111111111111111111111111111111111112",
-      "strategy_name": "Trend_Breakout_Follow",
-      "entry_price": 71.32,
-      "highest_price": 73.13886925752239,
-      "stop_loss_price": 72.51718886883344,
-      "take_profit_price": 74.03016,
-      "invested_usdc": 6.5123,
-      "token_amount": 0.09119685396803141,
-      "opened_at": "2026-11-26 21:05:07",
-      "opened_at_ts": 1795727107.6095107,
-      "trailing_active": true
-    }
-  },
+  "total_trades": 13,
+  "winning_trades": 5,
+  "total_net_pnl_usdc": 0.1454,
+  "open_positions": {},
   "trade_history": [
     {
       "symbol": "RAY",
@@ -181,6 +166,19 @@
       "closed_at": "2026-11-26 20:04:25",
       "max_favorable_pct": 0.05,
       "analysis_comment": "【敗因・防御分析】エントリー直後から買いが続かず（最大含み益 +0.05% 止まり）、上位足の売り圧力に押されるダマシ波形となりましたが、厳格な損切りルール(-1.95%)により1,000円資金の致命傷を完全に防ぎました。"
+    },
+    {
+      "symbol": "SOL",
+      "strategy_name": "Trend_Breakout_Follow",
+      "entry_price": 71.32,
+      "exit_price": 72.49,
+      "invested_usdc": 6.5123,
+      "net_pnl_usdc": 0.0903,
+      "net_pnl_pct": 1.39,
+      "exit_reason": "🔒 トレーリングストップ決済 (+1.64% / TrailSL=$72.5172)",
+      "closed_at": "2026-11-27 04:13:28",
+      "max_favorable_pct": 2.55,
+      "analysis_comment": "【勝因分析】一時 +2.55% まで上昇した後に反落しましたが、オート・トレーリングストップが機能して +1.39% の純利益を確実にロックできました。"
     }
   ]
 }
