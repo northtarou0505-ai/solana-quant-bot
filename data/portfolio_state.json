@@ -1,30 +1,15 @@
 {
   "mode": "PAPER",
   "initial_usdc": 6.8,
-  "available_usdc": 0.3472,
+  "available_usdc": 6.7435,
   "daily_start_equity_usdc": 6.846959625,
   "current_date": "2026-11-27",
-  "consecutive_losses": 1,
+  "consecutive_losses": 2,
   "cooldown_until_ts": 1795727065.009392,
-  "total_trades": 14,
+  "total_trades": 15,
   "winning_trades": 5,
-  "total_net_pnl_usdc": 0.1449,
-  "open_positions": {
-    "JUP": {
-      "symbol": "JUP",
-      "mint_address": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
-      "strategy_name": "Trend_Breakout_Follow",
-      "entry_price": 0.2527,
-      "highest_price": 0.2527,
-      "stop_loss_price": 0.24954125,
-      "take_profit_price": 0.2623026,
-      "invested_usdc": 6.5977,
-      "token_amount": 26.076188662445592,
-      "opened_at": "2026-11-27 14:02:40",
-      "opened_at_ts": 1795788160.017807,
-      "trailing_active": false
-    }
-  },
+  "total_net_pnl_usdc": -0.0565,
+  "open_positions": {},
   "trade_history": [
     {
       "symbol": "RAY",
@@ -207,6 +192,19 @@
       "closed_at": "2026-11-27 13:00:13",
       "max_favorable_pct": 1.4,
       "analysis_comment": "【敗因・改善分析】エントリー後に一時 +1.40% の含み益まで伸びましたが、利確ライン手前で買い圧力が失速して反落しました。急な相場反転でも損失を -0.01% に抑えて撤退完了しています。"
+    },
+    {
+      "symbol": "JUP",
+      "strategy_name": "Trend_Breakout_Follow",
+      "entry_price": 0.2527,
+      "exit_price": 0.2456,
+      "invested_usdc": 6.5977,
+      "net_pnl_usdc": -0.2014,
+      "net_pnl_pct": -3.05,
+      "exit_reason": "🛡️ 損切りストップ発動 (-2.81% / SL=$0.2495)",
+      "closed_at": "2026-11-27 15:03:23",
+      "max_favorable_pct": 0.0,
+      "analysis_comment": "【敗因・防御分析】エントリー直後から買いが続かず（最大含み益 +0.00% 止まり）、上位足の売り圧力に押されるダマシ波形となりましたが、厳格な損切りルール(-3.05%)により1,000円資金の致命傷を完全に防ぎました。"
     }
   ]
 }
