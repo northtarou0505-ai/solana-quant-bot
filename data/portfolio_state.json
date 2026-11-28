@@ -15,7 +15,7 @@
       "mint_address": "So11111111111111111111111111111111111111112",
       "strategy_name": "Oversold_Mean_Reversion",
       "entry_price": 71.24,
-      "highest_price": 71.464793663455,
+      "highest_price": 71.56018174779099,
       "stop_loss_price": 70.34949999999999,
       "take_profit_price": 73.94712,
       "invested_usdc": 6.468,
